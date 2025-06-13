@@ -1,21 +1,20 @@
 use worker::*;
-use reqwest;
 use scraper::{Html, Selector};
 
 #[event(fetch)]
 async fn fetch(
-    _req: Request,
+    req: Request,
     _env: Env,
     _ctx: Context,
 ) -> Result<Response> {
     console_error_panic_hook::set_once();
 
     // Yahooのページを取得
-    let res = reqwest::get("https://www.yahoo.co.jp").await?;
-    let html = res.text().await?;
+    let url = "https://www.yahoo.co.jp";
+    let res = reqwest::blocking::get(url).unwrap().text().unwrap();
 
     // HTMLを解析
-    let document = Html::parse_document(&html);
+    let document = Html::parse_document(&res);
     let selector = Selector::parse("title").unwrap();
     let title = document.select(&selector)
         .next()
