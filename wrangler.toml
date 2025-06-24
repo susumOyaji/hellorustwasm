@@ -1,6 +1,7 @@
 name = "hellorustwasm"
-main = "build/worker/shim.mjs"
+#main = "build/worker/shim.mjs"
 compatibility_date = "2025-06-13"
+pages_build_output_dir = "./public"
 
 [build]
-command = "cargo install -q worker-build && worker-build --release"
+#command = "cargo install -q worker-build && worker-build --release"
