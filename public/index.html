@@ -3,86 +3,247 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-    <meta http-equiv="Pragma" content="no-cache">
-    <meta http-equiv="Expires" content="0">
-    <title>Rust WebAssembly Hello World</title>
-    <link rel="stylesheet" href="style.css">
+    <title>株価情報検索 - Cloudflare Pages & Worker</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 20px;
+            background-color: #f4f7f6;
+            color: #333;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 1200px; /* 全体の幅を広げる */
+            margin: 30px auto;
+            background-color: #fff;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .input-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #555;
+        }
+        input[type="text"] {
+            width: calc(100% - 22px);
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 12px 25px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s ease;
+            display: block;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .results-section {
+            margin-top: 30px;
+            border-top: 1px solid #eee;
+            padding-top: 20px;
+        }
+
+        #results {
+            display: flex; /* Flexboxコンテナにする */
+            flex-wrap: wrap; /* 子要素を折り返す */
+            gap: 15px; /* 子要素間の隙間 */
+            justify-content: flex-start; /* 左寄せ */
+        }
+
+        .stock-card, .index-card { /* 両方のカードに適用 */
+            background-color: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            padding: 15px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+            flex: 0 0 calc(20% - 12px); /* 1行に5つ表示 (20%) - gapの調整 */
+            max-width: calc(20% - 12px); /* 最大幅も設定 */
+            box-sizing: border-box;
+            min-width: 180px;
+        }
+
+        /* 画面が小さい場合のレスポンシブ対応 */
+        @media (max-width: 1024px) {
+            .stock-card, .index-card {
+                flex: 0 0 calc(25% - 11.25px); /* 1行に4つ */
+                max-width: calc(25% - 11.25px);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .stock-card, .index-card {
+                flex: 0 0 calc(33.33% - 10px); /* 1行に3つ */
+                max-width: calc(33.33% - 10px);
+            }
+        }
+
+        @media (max-width: 480px) {
+            .stock-card, .index-card {
+                flex: 0 0 calc(50% - 7.5px); /* 1行に2つ */
+                max-width: calc(50% - 7.5px);
+            }
+        }
+
+        .stock-card p, .index-card p {
+            margin: 5px 0;
+            font-size: 14px;
+        }
+        .stock-card p strong, .index-card p strong {
+            color: #333;
+        }
+        .error {
+            color: #d9534f;
+            font-weight: bold;
+            text-align: center;
+            margin-top: 20px;
+        }
+        .loading {
+            text-align: center;
+            color: #007bff;
+            font-size: 1.1em;
+            margin-top: 20px;
+        }
+        pre {
+            background-color: #eee;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+    </style>
 </head>
 <body>
     <div class="container">
-        <header>
-            <h1>🦀 Rust + WebAssembly Demo</h1>
-            <p>A simple Hello World application using Rust compiled to WebAssembly</p>
-        </header>
+        <h1>株価情報検索</h1>
 
-        <main>
+        <div class="input-group">
+            <label for="stockCodes">株価コード (例: 6758.T, 9984.T, ^DJI, ^N225):</label>
+            <input type="text" id="stockCodes" value="6758.T,^DJI,^N225">
+        </div>
 
+        <button id="fetchDataButton">株価データを取得</button>
 
-            <section class="demo-section">
-                <h2>株式ポートフォリオ (Yahoo Finance)</h2>
-
-                <div class="input-group">
-                    <button id="toggle-auto-update-btn" class="demo-btn">Start Auto Update</button>
-                    <label for="update-interval">Update Interval:</label>
-                    <select id="update-interval" class="interval-select">
-                        <option value="5">5 seconds</option>
-                        <option value="10">10 seconds</option>
-                        <option value="30" selected>30 seconds</option>
-                        <option value="60">1 minute</option>
-                        <option value="300">5 minutes</option>
-                    </select>
-                    <span id="countdown-display" class="countdown-display"></span>
+        <div class="results-section">
+            <h2>取得結果</h2>
+            <div id="loading" class="loading" style="display: none;">データを取得中...</div>
+            <div id="results">
                 </div>
-
-                <div class="index-portfolios">
-                    <div id="dow-portfolio" class="portfolio-summary"></div>
-                    <div id="nikkei-portfolio" class="portfolio-summary"></div>
-                    <div id="usdjpy-portfolio" class="portfolio-summary"></div>
+            <div id="error" class="error" style="display: none;">
                 </div>
-                <div id="portfolio-summary" class="portfolio-summary"></div>
-                <div class="stocks-grid">
-                    <div class="stock-column">
-                        <div id="sony-stock-output" class="output"></div>
-                        <div id="sony-stock-content" class="stock-container"></div>
-                    </div>
-                    <div class="stock-column">
-                        <div id="rakuten-stock-output" class="output"></div>
-                        <div id="rakuten-stock-content" class="stock-container"></div>
-                    </div>
-                    <div class="stock-column">
-                        <div id="imurayama-stock-output" class="output"></div>
-                        <div id="imurayama-stock-content" class="stock-container"></div>
-                    </div>
-                </div>
-            </section>
-
-        </main>
-
-        <footer>
-            <div class="info">
-                <h3>How it works:</h3>
-                <ul>
-                    <li>Rust code is compiled to WebAssembly using <code>wasm-pack</code></li>
-                    <li>JavaScript loads the WASM module and calls Rust functions</li>
-                    <li>Results are displayed on the webpage and logged to console</li>
-                    <li>Check the browser console to see additional debug messages</li>
-                </ul>
-            </div>
-        </footer>
+            <h3>生データ (デバッグ用)</h3>
+            <pre id="rawData"></pre>
+        </div>
     </div>
 
-    <div id="loading" class="loading">
-        <p>Loading WebAssembly module...</p>
-    </div>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const fetchDataButton = document.getElementById('fetchDataButton');
+            const stockCodesInput = document.getElementById('stockCodes');
+            const resultsDiv = document.getElementById('results');
+            const errorDiv = document.getElementById('error');
+            const loadingDiv = document.getElementById('loading');
+            const rawDataPre = document.getElementById('rawData');
 
-    <div id="error" class="error hidden">
-        <h3>Error Loading WebAssembly</h3>
-        <p>This demo requires WebAssembly support and the compiled WASM module.</p>
-        <p>To build the WASM module, run:</p>
-        <pre><code>wasm-pack build --target web --out-dir pkg</code></pre>
-    </div>
+            // !!!重要!!!
+            // ここにデプロイしたCloudflare WorkerのURLを設定してください。
+            // 例: https://your-worker-name.your-username.workers.dev/
+            const WORKER_URL = 'https://hellorustwasm.sumitomo0210.workers.dev/api'; // <<< ここをあなたのWorkerのURLに置き換える
 
-    <script type="module" src="main.js"></script>
+            fetchDataButton.addEventListener('click', async () => {
+                const codes = stockCodesInput.value.trim();
+                // codesが空でもWorker側でデフォルトが設定されるため、ここでは空チェックをしない
+
+                resultsDiv.innerHTML = '';
+                errorDiv.style.display = 'none';
+                loadingDiv.style.display = 'block';
+                rawDataPre.textContent = '';
+
+                try {
+                    // codesが空文字列であればクエリパラメータなしでWorkerを呼び出し、Worker側でデフォルト処理
+                    const urlToFetch = codes ? `${WORKER_URL}?codes=${codes}` : WORKER_URL;
+                    const response = await fetch(urlToFetch);
+                    const data = await response.json();
+
+                    loadingDiv.style.display = 'none';
+                    rawDataPre.textContent = JSON.stringify(data, null, 2); // デバッグ用に生データを表示
+
+                    if (response.ok && data.status === 'success') {
+                        if (data.data && data.data.length > 0) {
+                            data.data.forEach(item => {
+                                let card;
+                                if (item.status === 'error') {
+                                    card = document.createElement('div');
+                                    card.className = item.type === 'stock' ? 'stock-card' : 'index-card';
+                                    card.innerHTML = `
+                                        <p><strong>コード:</strong> ${item.company_code || item.symbol || '不明'}</p>
+                                        <p class="error"><strong>エラー:</strong> ${item.message || 'データ取得失敗'}</p>
+                                    `;
+                                } else if (item.type === 'stock') {
+                                    card = document.createElement('div');
+                                    card.className = 'stock-card';
+                                    card.innerHTML = `
+                                        <h3>${item.company_name} (${item.company_code})</h3>
+                                        <p><strong>現在の株価:</strong> ${item.current_price}</p>
+                                        <p><strong>前日比:</strong> ${item.change_amount} (${item.change_percentage})</p>
+                                        <p><strong>更新日時:</strong> ${item.update_time}</p>
+                                        <p><strong>ソース:</strong> ${item.source}</p>
+                                    `;
+                                } else if (item.type === 'index') {
+                                    card = document.createElement('div');
+                                    card.className = 'index-card'; // 指数用のクラス名
+                                    card.innerHTML = `
+                                        <h3>${item.index_name} (${item.symbol})</h3>
+                                        <p><strong>現在の値:</strong> ${item.current_price}</p>
+                                        <p><strong>変化:</strong> ${item.change}</p>
+                                        <p><strong>更新日時:</strong> ${item.update_time}</p>
+                                        <p><strong>ソース:</strong> ${item.source}</p>
+                                    `;
+                                }
+
+                                if (card) {
+                                    resultsDiv.appendChild(card);
+                                }
+                            });
+                        } else {
+                            resultsDiv.innerHTML = '<p>データが見つかりませんでした。</p>';
+                        }
+                    } else {
+                        errorDiv.textContent = `エラーが発生しました: ${data.message || response.statusText}`;
+                        errorDiv.style.display = 'block';
+                    }
+                } catch (err) {
+                    loadingDiv.style.display = 'none';
+                    errorDiv.textContent = `ネットワークエラーまたは不正な応答: ${err.message}`;
+                    errorDiv.style.display = 'block';
+                    console.error('Fetch error:', err);
+                }
+            });
+
+            // 初期ロード時にデータを取得する
+            fetchDataButton.click();
+        });
+    </script>
 </body>
 </html>
